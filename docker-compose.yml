@@ -1,6 +1,7 @@
 services:
   ccbox:
     build: .
+    image: ccbox
     container_name: ccbox
     working_dir: /workspace
     volumes:
