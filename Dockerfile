@@ -29,7 +29,11 @@ RUN apt-get update \
     # --- 基礎工具 ---
     && apt-get install -y --no-install-recommends \
        git curl wget ca-certificates build-essential gpg sudo \
-       jq less procps unzip man-db \
+       jq less procps unzip man-db locales \
+    #
+    # --- UTF-8 locale（支援中文輸入與正確的終端寬字元計算）---
+    && sed -i 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen \
+    && locale-gen \
     #
     # --- 防火牆（iptables + ipset，用於域名白名單機制）---
     # 需搭配 --cap-add=NET_ADMIN --cap-add=NET_RAW 使用
@@ -48,9 +52,6 @@ RUN apt-get update \
     && curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     #
-    # --- gosu（entrypoint 中安全降權用）---
-    && apt-get install -y --no-install-recommends gosu \
-    #
     # --- 清除 apt cache 縮減 image 大小 ---
     && rm -rf /var/lib/apt/lists/*
 
@@ -68,37 +69,35 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 COPY init-firewall.sh /usr/local/bin/init-firewall.sh
 RUN chmod +x /usr/local/bin/init-firewall.sh
 
-# ── 5. Entrypoint（防火牆初始化 → 降權 → 執行 CMD）─────────────────
-COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
-
-# ── 6. Git credential helper（系統層級，不被 ~/.gitconfig 掛載覆蓋）─
+# ── 5. Git credential helper（系統層級，不被 ~/.gitconfig 掛載覆蓋）─
 RUN git config --system credential.helper '!gh auth git-credential'
 
-# ── 7. 非 root 使用者 ──────────────────────────────────────────────
+# ── 6. 非 root 使用者 ──────────────────────────────────────────────
 # ccbox 使用者僅有 init-firewall.sh 的 NOPASSWD sudo 權限
 RUN useradd -m -s /bin/bash ccbox \
     && echo "ccbox ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh" \
        > /etc/sudoers.d/ccbox-firewall \
     && chmod 0440 /etc/sudoers.d/ccbox-firewall
 
-# ── 8. 使用者空間設定（以 ccbox 身份）──────────────────────────────
+# ── 7. 使用者空間設定（以 ccbox 身份）──────────────────────────────
 USER ccbox
-RUN mkdir -p /home/ccbox/.claude /home/ccbox/.config/gh
+RUN mkdir -p /home/ccbox/.config
 
-# ── 9. Python（透過 uv 安裝到 ~/.local/）───────────────────────────
+# ── 8. Python（透過 uv 安裝到 ~/.local/）───────────────────────────
 # 擴充：可安裝多個版本，例如 uv python install 3.11 3.12
 RUN uv python install ${PYTHON_VERSION}
 
-# ── 10. 工作目錄與環境變數 ─────────────────────────────────────────
+# ── 9. 工作目錄與環境變數 ─────────────────────────────────────────
 WORKDIR /workspace
 
 ENV SHELL=/bin/bash
+ENV LANG=en_US.UTF-8
+ENV LC_ALL=en_US.UTF-8
 ENV PATH="/home/ccbox/.local/bin:/workspace/.venv/bin:$PATH"
 
 # ── Entrypoint & 預設命令 ──────────────────────────────────────────
-# 流程：entrypoint.sh → sudo init-firewall.sh → exec CMD
+# CCBOX_FIREWALL=true 時自動執行防火牆腳本，之後 exec CMD
 # 預設 CMD 為 sleep infinity（搭配 docker compose 使用）
 # 可被 docker run 覆蓋為 claude -p ... 等指令
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+ENTRYPOINT ["/bin/bash", "-c", "[ \"${CCBOX_FIREWALL:-}\" = true ] && sudo /usr/local/bin/init-firewall.sh; exec \"$@\"", "--"]
 CMD ["sleep", "infinity"]
