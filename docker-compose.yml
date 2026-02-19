@@ -7,13 +7,13 @@ services:
     volumes:
       # 專案工作區 — host IDE 直接開 ./workspace/{project} 查看即時變動
       - ./workspace:/workspace
-      # Claude Code 認證與設定（named volume 持久化，容器內登入）
-      - claude-config:/home/ccbox/.claude
-      - claude-json:/home/ccbox/.claude.json
-      # Git 設定（named volume 持久化，容器內設定）
-      - git-config:/home/ccbox/.gitconfig
+      # Claude Code 認證與設定
+      - ./config/claude:/home/ccbox/.claude
+      - ./config/claude.json:/home/ccbox/.claude.json
+      # Git 設定（Git 原生支援 ~/.config/git/config）
+      - ./config/git:/home/ccbox/.config/git
       # GitHub CLI 認證持久化
-      - gh-config:/home/ccbox/.config/gh
+      - ./config/gh:/home/ccbox/.config/gh
     env_file:
       - path: .env
         required: false
@@ -21,9 +21,3 @@ services:
       - SHELL=/bin/bash
     stdin_open: true
     tty: true
-
-volumes:
-  claude-config:
-  claude-json:
-  git-config:
-  gh-config:
