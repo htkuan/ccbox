@@ -92,41 +92,37 @@ Claude Code 會在 `/workspace/{project}` 中操作，所有變動即時反映�
 
 ## 首次設定
 
-所有認證與設定都在容器內完成，透過 named volumes 持久化，重啟容器不會遺失。
+所有認證與設定都透過 `./config/` bind mount 持久化，重啟容器不會遺失。
 
-### Claude Code 授權
+只需完成以下兩步：
+
+### 1. Claude Code 登入
 
 ```bash
 docker exec -it ccbox claude login
 ```
 
-### Git 設定
-
-```bash
-docker exec -it ccbox git config --global user.name "Your Name"
-docker exec -it ccbox git config --global user.email "you@example.com"
-```
-
-### GitHub CLI 授權
+### 2. GitHub CLI 登入
 
 在容器內登入（設 `BROWSER=echo` 避免開瀏覽器卡住）：
 
 ```bash
-docker exec -it ccbox bash
-BROWSER=echo gh auth login -p https -h github.com
+docker exec -it ccbox bash -c 'BROWSER=echo gh auth login -p https -h github.com'
 ```
 
 終端會顯示 URL 和 one-time code，在 host 瀏覽器開啟 URL 完成授權。
 
+Git 的 user/email 設定不需要額外處理，GitHub CLI 登入後會自動透過 `gh auth git-credential` 處理身份驗證。
+
 ## 掛載說明
 
-| 掛載 | 容器路徑 | 類型 | 用途 |
-|------|---------|------|------|
-| `./workspace` | `/workspace` | bind mount | 專案工作區（雙向同步） |
-| `claude-config` | `/home/ccbox/.claude` | named volume | Claude Code 認證與設定 |
-| `claude-json` | `/home/ccbox/.claude.json` | named volume | Claude Code 設定檔 |
-| `git-config` | `/home/ccbox/.gitconfig` | named volume | Git 使用者設定 |
-| `gh-config` | `/home/ccbox/.config/gh` | named volume | GitHub CLI 認證 |
+| 掛載 | 容器路徑 | 用途 |
+|------|---------|------|
+| `./workspace` | `/workspace` | 專案工作區（雙向同步） |
+| `./config/claude` | `/home/ccbox/.claude` | Claude Code 認證與設定 |
+| `./config/claude.json` | `/home/ccbox/.claude.json` | Claude Code 設定檔 |
+| `./config/git` | `/home/ccbox/.config/git` | Git 使用者設定 |
+| `./config/gh` | `/home/ccbox/.config/gh` | GitHub CLI 認證 |
 
 ## 常用指令
 
