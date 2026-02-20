@@ -21,6 +21,7 @@ FROM debian:bookworm
 ARG CLAUDE_CODE_VERSION=latest
 ARG NODE_MAJOR=22
 ARG PYTHON_VERSION=3.12
+ARG GO_VERSION=1.24.0
 
 # ── 1. System packages ─────────────────────────────────────────────
 # 單一 RUN 減少 image layer 數量；apt cache 最後統一清除
@@ -65,6 +66,12 @@ RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
 # 從官方 image 直接 COPY 二進位，零額外依賴
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
+# ── 3b. Go ───────────────────────────────────────────────────────────
+# 從官方 tarball 安裝，版本透過 ARG 控制
+ARG TARGETARCH
+RUN curl -fsSL https://go.dev/dl/go${GO_VERSION}.linux-${TARGETARCH}.tar.gz \
+    | tar -C /usr/local -xz
+
 # ── 4. Firewall script ─────────────────────────────────────────────
 COPY init-firewall.sh /usr/local/bin/init-firewall.sh
 RUN chmod +x /usr/local/bin/init-firewall.sh
@@ -93,7 +100,7 @@ WORKDIR /workspace
 ENV SHELL=/bin/bash
 ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
-ENV PATH="/home/ccbox/.local/bin:/workspace/.venv/bin:$PATH"
+ENV PATH="/usr/local/go/bin:/home/ccbox/go/bin:/home/ccbox/.local/bin:/workspace/.venv/bin:$PATH"
 
 # ── Entrypoint & 預設命令 ──────────────────────────────────────────
 # CCBOX_FIREWALL=true 時自動執行防火牆腳本，之後 exec CMD
