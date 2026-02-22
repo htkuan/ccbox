@@ -5,7 +5,7 @@
 # 內建 iptables 防火牆（僅白名單出站），適合搭配
 # --dangerously-skip-permissions 使用。
 #
-# 內建工具：Node.js, Python, GitHub CLI, Claude Code, uv
+# 內建工具：Node.js, Python, GitHub CLI, Claude Code, Codex, Gemini CLI, uv
 # 安全機制：iptables + ipset 防火牆（白名單制）
 #
 # 擴充方式：
@@ -15,17 +15,32 @@
 #   - 加入新的白名單域名 → 編輯 init-firewall.sh
 # ====================================================================
 
-FROM debian:bookworm
+ARG UV_VERSION=0.10.4
+FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
+
+FROM debian:bookworm-slim
+
+# ── Metadata ─────────────────────────────────────────────────────
+LABEL org.opencontainers.image.title="ccbox" \
+      org.opencontainers.image.description="Sandboxed Claude Code runner" \
+      org.opencontainers.image.source="https://github.com/htkuan/ccbox"
+
+# ── Shell（確保 pipe 中任一指令失敗就中斷 build）──────────────────
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # ── Build arguments（集中管理版本號，方便升級）─────────────────────
 ARG CLAUDE_CODE_VERSION=latest
+ARG CODEX_VERSION=latest
+ARG GEMINI_CLI_VERSION=latest
 ARG NODE_MAJOR=22
 ARG PYTHON_VERSION=3.12
 ARG GO_VERSION=1.24.0
 
 # ── 1. System packages ─────────────────────────────────────────────
-# 單一 RUN 減少 image layer 數量；apt cache 最後統一清除
-RUN apt-get update \
+# 單一 RUN 減少 image layer 數量；BuildKit cache mount 加速重建
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    apt-get update \
     #
     # --- 基礎工具 ---
     && apt-get install -y --no-install-recommends \
@@ -51,20 +66,21 @@ RUN apt-get update \
     #
     # --- Node.js LTS（Claude Code 需要 Node >= 18）---
     && curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - \
-    && apt-get install -y --no-install-recommends nodejs \
-    #
-    # --- 清除 apt cache 縮減 image 大小 ---
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get install -y --no-install-recommends nodejs
 
 # ── 2. Global npm tools ────────────────────────────────────────────
-# Claude Code CLI（全域安裝）
+# AI Coding CLI 全域安裝：Claude Code, Codex, Gemini CLI
 # 擴充：在此處添加其他全域 npm 工具，例如：
 #   && npm install -g typescript \
-RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
+RUN --mount=type=cache,target=/root/.npm \
+    npm install -g \
+    @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} \
+    @openai/codex@${CODEX_VERSION} \
+    @google/gemini-cli@${GEMINI_CLI_VERSION}
 
 # ── 3. uv（Python 套件管理 + 自帶 Python 版本管理）─────────────────
 # 從官方 image 直接 COPY 二進位，零額外依賴
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+COPY --from=uv /uv /usr/local/bin/uv
 
 # ── 3b. Go ───────────────────────────────────────────────────────────
 # 從官方 tarball 安裝，版本透過 ARG 控制

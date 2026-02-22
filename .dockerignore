@@ -1,5 +1,6 @@
 .git
 .env
+config
 workspace
 ref
 *.md
